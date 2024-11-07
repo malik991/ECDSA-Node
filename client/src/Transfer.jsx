@@ -1,7 +1,15 @@
 import { useState } from "react";
 import server from "./server";
+import * as secp from "ethereum-cryptography/secp256k1";
+import { keccak256 } from "ethereum-cryptography/keccak";
+import { utf8ToBytes } from "ethereum-cryptography/utils";
 
-function Transfer({ address, setBalance }) {
+function hashMessage(msg) {
+  const bytes = utf8ToBytes(msg);
+  return keccak256(bytes);
+}
+
+function Transfer({ address, setBalance, privateKey }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
 
@@ -10,13 +18,43 @@ function Transfer({ address, setBalance }) {
   async function transfer(evt) {
     evt.preventDefault();
 
+    const amount = parseInt(sendAmount);
+
+    const message = address + recipient + amount;
+    const messageLength = message.length.toString();
+    const formattedMsg = "ethereum signed message" + messageLength + message;
+
+    const hashMsg = hashMessage(formattedMsg);
+
+    const signature = secp.secp256k1.sign(hashMsg, privateKey);
+    const recoveryBit = signature.recovery;
+
+    // try {
+    //   const hexSignature = signature.toCompactHex();
+    //   const res = await server.post(`send`, {
+    //     sender: address,
+    //     amount,
+    //     recipient,
+    //     signature: hexSignature,
+    //     recoveryBit,
+    //   });
+    //   //setBalance(balance);
+    // } catch (ex) {
+    //   console.log(ex);
+
+    //   //alert(ex.response.data.message);
+    // }
+
     try {
+      const hexSignature = signature.toCompactHex();
       const {
         data: { balance },
       } = await server.post(`send`, {
-        sender: address,
-        amount: parseInt(sendAmount),
+        sender: address, // public address of sender
+        amount,
         recipient,
+        signature: hexSignature,
+        recoveryBit,
       });
       setBalance(balance);
     } catch (ex) {
@@ -45,6 +83,8 @@ function Transfer({ address, setBalance }) {
           onChange={setValue(setRecipient)}
         ></input>
       </label>
+
+      <div>Private Key: {privateKey}</div>
 
       <input type="submit" className="button" value="Transfer" />
     </form>
